@@ -1,7 +1,10 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-
+/// <Issues to look into>
+/// Check every instance of RemoveWall being called. want to fix the random wall being destroyed bug
+/// most likely it exists due to how the loop mechanic works. 
+/// </summary>
 public class Maze : MonoBehaviour
 {
     //array of area
@@ -12,6 +15,7 @@ public class Maze : MonoBehaviour
     public Elevator elevatorPrefab;
     public Player playerPrefab;
     public GameObject exitSign;
+    public GameObject ceilingLight;
 
     //stack for backtracking
     public static Stack<Tile> tileList = new Stack<Tile>();
@@ -32,26 +36,23 @@ public class Maze : MonoBehaviour
         size += sizeMin * difficulty;
 
         usableUnits = Mathf.Min(size, totalUnits); //at difficulty = 458 size will be greater than totalUnits
-
         size /= totalUnits;
 
         int unitsPerSide = Mathf.FloorToInt(Mathf.Sqrt(usableUnits));
+        int maxNumFloor = unitsPerSide / sizeMin;
         // determine if there will be more than 1 floor. minimum 25% chance to gain a floor.
-        while (unitsPerSide > 2 * sizeMin)
+        for (int i = 1; i < maxNumFloor; i++)
         {
             float roll = Random.Range(0.0f, 100f);
 
-            if (roll > 0)
+            if(roll > 25f)
             {
-                unitsPerSide = Mathf.FloorToInt(unitsPerSide * 0.5f);
                 numFloors += 1;
             }
-            else
-            {
-                break;
-            }
-            Debug.Log("# of floors roll: " + roll);
         }
+
+        unitsPerSide /= numFloors;
+
         buildMaze(unitsPerSide, numFloors, difficulty);
 
         placePlayer(unitsPerSide, numFloors);
@@ -101,8 +102,7 @@ public class Maze : MonoBehaviour
                 float loopLimit = elevatorLimit + loopChance;
 
                 float roll = Random.Range(0f, 1f);
-                Debug.Log("roll for dead ends: " + roll + "\nbacktrack limit: " + nothingLimit + "\nelevator limit: " + elevatorLimit + "\nloop limit: " + loopLimit);
-                Debug.Log("\ndead end tile: " + tileList.Peek().name);
+
                 if (roll < nothingLimit)
                 {
                     //backtrack
@@ -135,6 +135,7 @@ public class Maze : MonoBehaviour
                                             newLift.transform.parent = tileList.Peek().transform;
                                             newLift.transform.localEulerAngles = new Vector3(0, 90 * (walls[wallCheck] - 1), 0);
                                             newLift.transform.localPosition = new Vector3(0, 0, 0);
+                                            removeCeilingLight();
                                             break;
                                         }
                                         walls[wallCheck] = walls[k];
@@ -161,6 +162,7 @@ public class Maze : MonoBehaviour
                                             newLift.transform.parent = tileList.Peek().transform;
                                             newLift.transform.localEulerAngles = new Vector3(0, 90 * (walls[wallCheck] - 1), 0);
                                             newLift.transform.localPosition = new Vector3(0, 0, 0);
+                                            removeCeilingLight();
                                             break;
                                         }
                                         walls[wallCheck] = walls[k];
@@ -178,19 +180,24 @@ public class Maze : MonoBehaviour
                 else if (roll >= elevatorLimit && roll < loopLimit)
                 {
                     //create loop
-                    int tempX = 0;
-                    int tempY = 0;
-                    int tempZ = 0;
+                    int topX = 0;
+                    int topY = 0;
+                    int topZ = 0;
+
+                    tileList.Peek().getIndecies(ref topX, ref topY, ref topZ);
 
                     int rand;
                     int[] directions = { 1, 2, 3, 4 };
 
                     for (int k = 0; k < directions.Length; k++)
                     {
-                        tileList.Peek().getIndecies(ref tempX, ref tempY, ref tempZ);
+                        int tempX = topX;
+                        int tempY = topY;
+                        int tempZ = topZ;
+                        bool wallRemoved = false;
                         rand = Random.Range(k, directions.Length);
                         
-                        switch(directions[rand])
+                        switch (directions[rand])
                         {
                             case 1:
                                 tempZ += 1;
@@ -200,6 +207,7 @@ public class Maze : MonoBehaviour
                                     tileList.Peek().removeWall(directions[rand]);
                                     rand = 2;
                                     map[tempX, tempZ, tempY].removeWall(directions[rand]);
+                                    wallRemoved = true;
                                 }
                                 break;
                             case 2:
@@ -210,6 +218,7 @@ public class Maze : MonoBehaviour
                                     tileList.Peek().removeWall(directions[rand]);
                                     rand = 3;
                                     map[tempX, tempZ, tempY].removeWall(directions[rand]);
+                                    wallRemoved = true;
                                 }
                                 break;
                             case 3:
@@ -220,6 +229,7 @@ public class Maze : MonoBehaviour
                                     tileList.Peek().removeWall(directions[rand]);
                                     rand = 0;
                                     map[tempX, tempZ, tempY].removeWall(directions[rand]);
+                                    wallRemoved = true;
                                 }
                                 break;
                             case 4:
@@ -230,10 +240,19 @@ public class Maze : MonoBehaviour
                                     tileList.Peek().removeWall(directions[rand]);
                                     rand = 1;
                                     map[tempX, tempZ, tempY].removeWall(directions[rand]);
+                                    wallRemoved = true;
                                 }
                                 break;
                         }
-                        directions[rand] = directions[k];
+                        if(!wallRemoved)
+                        {
+                            directions[rand] = directions[k];
+                        }
+                        else
+                        {
+                            break;
+                        }
+                        
                     }
                     //backtrack I think;
                     backTrack(ref x, ref y, ref z, uPS, nF);
@@ -426,6 +445,8 @@ public class Maze : MonoBehaviour
         //create the tile
         createTile(x, y, z, uPS, nF);
 
+        createCeilingLight();
+
         //remove wall blocking previous tile
         if (prevX != x)
         {
@@ -532,6 +553,26 @@ public class Maze : MonoBehaviour
 
             //if no valid tiles, repeat
         } while (map[x, z, y] == tileList.Peek());
+    }
+
+    private void createCeilingLight()
+    {
+        GameObject newLight = Instantiate(ceilingLight) as GameObject;
+        newLight.name = "Ceiling Light";
+        newLight.transform.parent = tileList.Peek().transform;
+        newLight.transform.localPosition = new Vector3(0, 2.67f, 0);
+    }
+
+    private void removeCeilingLight()
+    {
+        Transform[] all = tileList.Peek().GetComponentsInChildren<Transform>();
+        for(int i = 0; i < all.Length; i++)
+        {
+            if(all[i].name == "Ceiling Light")
+            {
+                Destroy(all[i].gameObject);
+            }
+        }
     }
 
     private void placePlayer(int uPS, int nF)
