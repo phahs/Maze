@@ -2,15 +2,16 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class Exit_Zone : MonoBehaviour
-{
+public class Light_Change : MonoBehaviour {
+
     public Player player;
+    public Light light;
 
     private void OnTriggerEnter(Collider other)
     {
-        if(other.tag == player.tag)
+        if (other.tag == player.tag)
         {
-            Game_Controller.control.exitFound();
+            light.color = Color.green;
         }
     }
 }
